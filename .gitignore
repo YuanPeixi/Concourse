@@ -1,4 +1,6 @@
 .env
+CLAUDE.md
+AGENTS.md
 .browser-data/
 .debug/
 credentials/
