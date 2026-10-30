@@ -17,16 +17,19 @@ from shared.models import ScheduleEventCreate  # noqa: E402
 class _FakeFetcher:
     name = "codeforces"
 
-    def __init__(self, fail: bool = False, title: str = "Round 1", status: str = "open"):
+    def __init__(self, fail: bool = False, title: str = "Round 1", status: str = "open",
+                 raw_payload: dict | None = None):
         self.fail = fail
         self.title = title
         self.status = status
+        self.raw_payload = raw_payload or {}
 
     async def fetch(self, since=None):
         if self.fail:
             raise RuntimeError("boom")
         return [ScheduleEventCreate(
             platform="codeforces", source_id="contest:1", title=self.title, status=self.status,
+            raw_payload=self.raw_payload,
         )]
 
 
@@ -120,3 +123,17 @@ def test_fetch_does_not_reopen_user_done(client, monkeypatch):
     monkeypatch.setattr(scheduler, "_load_fetcher", lambda name: _FakeFetcher(title="v3", status="submitted"))
     _run_and_wait(client, "codeforces")
     assert _cf_event(client)["status"] == "submitted"
+
+
+def test_raw_payload_refreshed_without_content_change(client, monkeypatch):
+    monkeypatch.setattr(scheduler, "_load_fetcher", lambda name: _FakeFetcher(title="same"))
+    _run_and_wait(client, "codeforces")
+
+    # 只有 raw_payload 变了：不算 changed，但已入库的行要拿到新字段
+    monkeypatch.setattr(
+        scheduler, "_load_fetcher",
+        lambda name: _FakeFetcher(title="same", raw_payload={"kind": "contest"}),
+    )
+    info = _run_and_wait(client, "codeforces")
+    assert info["last_changed"] == 0
+    assert _cf_event(client)["raw_payload"]["kind"] == "contest"

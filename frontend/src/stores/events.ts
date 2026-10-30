@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { ScheduleEvent, StagedEvent } from '../types'
+import { urgencyOf as computeUrgency, type Urgency } from '../eventTime'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
@@ -12,6 +13,9 @@ export const useEventsStore = defineStore('events', () => {
   const error = ref<string | null>(null)
   const activePlatform = ref<string>('all')
   const hideDone = ref(false)
+  // 移入回收站前是否弹确认框；偏好持久化到 localStorage
+  const confirmDelete = ref(localStorage.getItem('confirmDelete') !== 'false')
+  watch(confirmDelete, v => localStorage.setItem('confirmDelete', String(v)))
   const platforms = computed(() => {
     const ps = new Set(events.value.map(e => e.platform))
     return ['all', ...Array.from(ps).sort()]
@@ -27,21 +31,8 @@ export const useEventsStore = defineStore('events', () => {
 
   const now = ref(new Date())
 
-  // Backend returns offsets like "+00:00"; appending "Z" to those yields
-  // invalid ISO strings, so only append when no zone is present.
-  function parseMs(iso: string | null): number {
-    if (!iso) return NaN
-    return Date.parse(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z')
-  }
-
-  function urgencyOf(e: ScheduleEvent): 'urgent' | 'warn' | 'normal' | 'done' {
-    if (['submitted', 'done', 'closed'].includes(e.status)) return 'done'
-    if (!e.end_at) return 'normal'
-    const ms = parseMs(e.end_at) - now.value.getTime()
-    if (ms < 0) return 'done'
-    if (ms <= 48 * 3600 * 1000) return 'urgent'
-    if (ms <= 7 * 24 * 3600 * 1000) return 'warn'
-    return 'normal'
+  function urgencyOf(e: ScheduleEvent): Urgency {
+    return computeUrgency(e, now.value.getTime())
   }
 
   const urgentEvents = computed(() =>
@@ -149,7 +140,7 @@ export const useEventsStore = defineStore('events', () => {
 
   return {
     events, staged, trash, loading, error,
-    activePlatform, platforms, hideDone,
+    activePlatform, platforms, hideDone, confirmDelete,
     filteredEvents, urgentEvents, warnEvents, normalEvents, doneEvents,
     urgencyOf, now,
     fetchEvents, acceptStaged, dismissStaged,

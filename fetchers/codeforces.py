@@ -76,6 +76,8 @@ class CodeforcesFetcher:
                         submission_policy=SubmissionPolicy.NONE,
                         meeting_url=f"https://codeforces.com/contest/{contest_id}",
                         raw_payload={
+                            # 定时事项：前端按 start_at 显示/计算紧急度（见 frontend/src/eventTime.ts）
+                            "kind": "contest",
                             "type": c.get("type"),
                             "phase": phase,
                             "registered": registered,
