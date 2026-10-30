@@ -31,7 +31,7 @@ async function markDone() {
 }
 
 async function del() {
-  if (!confirm(`移入回收站？\n${props.event.title}`)) return
+  if (store.confirmDelete && !confirm(`移入回收站？\n${props.event.title}`)) return
   try { await store.deleteEvent(props.event.id) }
   catch (e: any) { console.error(e.message) }
 }

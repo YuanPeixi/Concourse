@@ -84,6 +84,10 @@ async function addEvent() {
         <input type="checkbox" v-model="store.hideDone" />
         隐藏已完成
       </label>
+      <label class="hide-done-toggle confirm-toggle">
+        <input type="checkbox" v-model="store.confirmDelete" />
+        删除前确认
+      </label>
     </div>
 
     <!-- stat tiles -->
@@ -178,6 +182,7 @@ async function addEvent() {
   padding: 4px 8px;
 }
 .hide-done-toggle input { accent-color: var(--accent); cursor: pointer; }
+.confirm-toggle { margin-left: 0; }
 
 .stat-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
 .stat-tile {

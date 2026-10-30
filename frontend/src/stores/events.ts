@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { ScheduleEvent, StagedEvent } from '../types'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
@@ -12,6 +12,9 @@ export const useEventsStore = defineStore('events', () => {
   const error = ref<string | null>(null)
   const activePlatform = ref<string>('all')
   const hideDone = ref(false)
+  // 移入回收站前是否弹确认框；偏好持久化到 localStorage
+  const confirmDelete = ref(localStorage.getItem('confirmDelete') !== 'false')
+  watch(confirmDelete, v => localStorage.setItem('confirmDelete', String(v)))
   const platforms = computed(() => {
     const ps = new Set(events.value.map(e => e.platform))
     return ['all', ...Array.from(ps).sort()]
@@ -149,7 +152,7 @@ export const useEventsStore = defineStore('events', () => {
 
   return {
     events, staged, trash, loading, error,
-    activePlatform, platforms, hideDone,
+    activePlatform, platforms, hideDone, confirmDelete,
     filteredEvents, urgentEvents, warnEvents, normalEvents, doneEvents,
     urgencyOf, now,
     fetchEvents, acceptStaged, dismissStaged,
