@@ -5,6 +5,7 @@ database_url: "sqlite+aiosqlite:///./concourse.db"
 schedule:
   codeforces: "*/10 * * * *"   # 每 10 分钟
   scholat: "0 */2 * * *"        # 每 2 小时
+  itestcloud: "0 */2 * * *"     # 每 2 小时
 
 # 各 fetcher 的实例化参数
 fetchers:
@@ -14,6 +15,8 @@ fetchers:
   scholat:
     course_ids: ["3017", "3042","3854"]
     include_submitted: true
+    headless: true
+  itestcloud:
     headless: true
 
 # Agent 白名单：只有这里的 action 会被执行，其余一律拒绝
