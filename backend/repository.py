@@ -39,6 +39,9 @@ async def upsert_event(session: AsyncSession, ev: ScheduleEventCreate) -> tuple[
     if existing is not None:
         changed = existing.content_hash != content_hash
         existing.last_seen_at = now
+        # raw_payload 不参与 content_hash（只是元数据），但始终同步为最新抓取结果，
+        # 否则 fetcher 新增的字段（如 kind）永远到不了已入库的行
+        existing.raw_payload = ev.raw_payload
         if changed:
             existing.title = ev.title
             existing.description = ev.description
@@ -58,7 +61,6 @@ async def upsert_event(session: AsyncSession, ev: ScheduleEventCreate) -> tuple[
             existing.attendees = ev.attendees
             existing.recurrence_rrule = ev.recurrence_rrule
             existing.content_hash = content_hash
-            existing.raw_payload = ev.raw_payload
             existing.updated_at = now
         session.add(existing)
         await session.commit()

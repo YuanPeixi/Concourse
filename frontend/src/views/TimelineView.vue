@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useEventsStore } from '../stores/events'
 import type { ScheduleEvent } from '../types'
 import { PLATFORM_COLORS, displayName, platformColor } from '../platforms'
+import { isRunning, isTimed, keyMs, parseMs, urgencyOf, type Urgency } from '../eventTime'
 
 const store = useEventsStore()
 
@@ -23,38 +24,28 @@ const windowStart = computed(() => now.value - PAST_H * 3_600_000)
 const windowEnd   = computed(() => now.value + FUTURE_D * 24 * 3_600_000)
 
 // ── Pixel position helpers ────────────────────────────────────────────────────
-// Backend returns offsets like "+00:00"; appending "Z" to those yields invalid
-// ISO strings, so only append when no zone is present.
-function parseMs(iso: string | null): number {
-  if (!iso) return NaN
-  return Date.parse(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z')
-}
-
 function toPx(ms: number): number {
   return ((ms - windowStart.value) / TOTAL_MS) * TOTAL_PX.value
 }
 const nowPx = computed(() => toPx(now.value))
 
+// Node sits at the key time: start for contests/exams, deadline otherwise
 function eventPx(e: ScheduleEvent): number {
-  if (!e.end_at) return 0
-  return toPx(parseMs(e.end_at))
+  const ms = keyMs(e)
+  return isNaN(ms) ? 0 : toPx(ms)
 }
 
 // ── Urgency ───────────────────────────────────────────────────────────────────
-function urgency(e: ScheduleEvent): 'urgent' | 'warn' | 'done' | 'normal' {
-  if (['submitted', 'done', 'closed'].includes(e.status)) return 'done'
-  if (!e.end_at) return 'normal'
-  const diff = parseMs(e.end_at) - now.value
-  if (diff <= 0) return 'done'
-  if (diff <= 48 * 3_600_000) return 'urgent'
-  if (diff <= 7 * 24 * 3_600_000) return 'warn'
-  return 'normal'
+function urgency(e: ScheduleEvent): Urgency {
+  return urgencyOf(e, now.value)
 }
 
 // ── Countdown ────────────────────────────────────────────────────────────────
 function countdown(e: ScheduleEvent): string {
-  if (!e.end_at) return '—'
-  const diff = parseMs(e.end_at) - now.value
+  if (isRunning(e, now.value)) return '进行中'
+  const key = keyMs(e)
+  if (isNaN(key)) return '—'
+  const diff = key - now.value
   if (diff <= 0) {
     const o = -diff
     if (o < 3_600_000) return `已过 ${Math.floor(o / 60_000)} 分`
@@ -94,9 +85,8 @@ const ticks = computed<Tick[]>(() => {
 // ── Grouped lanes ─────────────────────────────────────────────────────────────
 const visibleEvents = computed(() =>
   store.events.filter(e => {
-    if (!e.end_at) return false
-    const ms = parseMs(e.end_at)
-    return ms >= windowStart.value && ms <= windowEnd.value
+    const ms = keyMs(e)
+    return !isNaN(ms) && ms >= windowStart.value && ms <= windowEnd.value
   })
 )
 
@@ -108,7 +98,7 @@ const lanes = computed<Lane[]>(() => {
     map.get(e.platform)!.push(e)
   }
   for (const arr of map.values())
-    arr.sort((a, b) => parseMs(a.end_at) - parseMs(b.end_at))
+    arr.sort((a, b) => keyMs(a) - keyMs(b))
   return Array.from(map.entries()).map(([platform, events]) => ({ platform, events }))
 })
 
@@ -237,7 +227,8 @@ function fmtFull(iso: string | null): string {
           <button class="detail-close" @click="selected = null">✕</button>
         </div>
         <div class="detail-title">{{ selected.title }}</div>
-        <div class="detail-row"><span class="detail-k">截止</span><span class="detail-v">{{ fmtFull(selected.end_at) }} (CST)</span></div>
+        <div v-if="isTimed(selected)" class="detail-row"><span class="detail-k">开始</span><span class="detail-v">{{ fmtFull(selected.start_at) }} (CST)</span></div>
+        <div class="detail-row"><span class="detail-k">{{ isTimed(selected) ? '结束' : '截止' }}</span><span class="detail-v">{{ fmtFull(selected.end_at) }} (CST)</span></div>
         <div class="detail-row"><span class="detail-k">倒计时</span><span class="detail-v" :class="`cd-${urgency(selected)}`">{{ countdown(selected) }}</span></div>
         <div class="detail-row"><span class="detail-k">状态</span><span class="detail-v">{{ selected.status }}</span></div>
         <div class="detail-row"><span class="detail-k">提交规则</span><span class="detail-v">{{ selected.submission_policy }}</span></div>

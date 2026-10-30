@@ -98,6 +98,8 @@ API: `GET /fetchers`, `PATCH /fetchers/{name}` `{enabled?, cron?}` (`cron: null`
 
 Fetcher results are upserted directly into `events` (they are the platform's source of truth) — the staged buffer only applies to agent/CLI additions.
 
+`raw_payload.kind` tells the frontend which time matters: `contest` (codeforces) / `exam` (itestcloud) are *timed* — displayed, sorted and urgency-ranked by `start_at` (shown as 进行中 while inside `[start_at, end_at)`). Anything else (`train`, scholat homework, manual) is a deadline → `end_at`. Logic lives in `frontend/src/eventTime.ts`. `raw_payload` is not part of `content_hash`, but `upsert_event` always refreshes it (without counting it as changed), so new payload fields reach existing rows on the next fetch.
+
 **Playwright fetchers** use `launch_persistent_context` to preserve login sessions across runs (`.browser-data/<platform>/`). Scraping logic is split: `scrape` navigates and fetches HTML; `parse_*` are pure functions on HTML strings — the latter are unit-testable offline. See `fetchers/scholat.py` as the reference.
 
 **HTTP fetchers** use `httpx.AsyncClient` with no browser. See `fetchers/codeforces.py`.

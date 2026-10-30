@@ -4,6 +4,8 @@ import { useEventsStore } from '../stores/events'
 import StagedPanel from '../components/StagedPanel.vue'
 import EventRow from '../components/EventRow.vue'
 import { displayName, platformColor } from '../platforms'
+import { keyMs } from '../eventTime'
+import type { ScheduleEvent } from '../types'
 
 const store = useEventsStore()
 
@@ -18,29 +20,31 @@ const platformGroups = computed(() => {
     map.get(e.platform)!.push(e)
   }
 
-  // Sort within each platform: urgent → warn → normal → done, then by end_at
+  // Sort within each platform: urgent → warn → normal → done, then by key time
+  // (start for contests/exams, deadline otherwise; missing times last)
   const urgencyOrder = { urgent: 0, warn: 1, normal: 2, done: 3 }
+  const byKey = (a: ScheduleEvent, b: ScheduleEvent) => {
+    const ka = keyMs(a), kb = keyMs(b)
+    if (isNaN(ka)) return isNaN(kb) ? 0 : 1
+    if (isNaN(kb)) return -1
+    return ka - kb
+  }
   for (const arr of map.values()) {
     arr.sort((a, b) => {
       const ua = urgencyOrder[store.urgencyOf(a)]
       const ub = urgencyOrder[store.urgencyOf(b)]
       if (ua !== ub) return ua - ub
-      if (!a.end_at) return 1
-      if (!b.end_at) return -1
-      return Date.parse(a.end_at) - Date.parse(b.end_at)
+      return byKey(a, b)
     })
   }
 
-  // Sort platforms by their most urgent event's deadline
+  // Sort platforms by their most urgent event's key time
   return Array.from(map.entries())
     .sort((a, b) => {
       const urgA = urgencyOrder[store.urgencyOf(a[1][0])]
       const urgB = urgencyOrder[store.urgencyOf(b[1][0])]
       if (urgA !== urgB) return urgA - urgB
-      const ea = a[1][0]?.end_at
-      const eb = b[1][0]?.end_at
-      if (!ea) return 1; if (!eb) return -1
-      return Date.parse(ea) - Date.parse(eb)
+      return byKey(a[1][0], b[1][0])
     })
     .map(([platform, events]) => ({ platform, events }))
 })

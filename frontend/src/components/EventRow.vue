@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { ScheduleEvent } from '../types'
 import { useEventsStore } from '../stores/events'
+import { isRunning, isTimed, parseMs } from '../eventTime'
 
 const props = defineProps<{
   event: ScheduleEvent
@@ -16,14 +18,25 @@ const POLICY_LABEL: Record<string, string> = {
   unlimited: '无限次',
 }
 
-function fmt(iso: string | null): string {
+function fmt(iso: string | null, withDate = true): string {
   if (!iso) return '—'
-  const ms = Date.parse(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z')
-  return new Date(ms).toLocaleString('zh-CN', {
-    month: '2-digit', day: '2-digit',
+  return new Date(parseMs(iso)).toLocaleString('zh-CN', {
+    ...(withDate ? { month: '2-digit', day: '2-digit' } : {}),
     hour: '2-digit', minute: '2-digit', hour12: false,
   })
 }
+
+// Timed events (contest/exam) show their start; deadlines show end_at as before.
+const timeLabel = computed(() => {
+  const e = props.event
+  if (!isTimed(e)) return fmt(e.end_at)
+  if (isRunning(e, store.now.getTime())) return `进行中 至 ${fmt(e.end_at, false)}`
+  return `开始 ${fmt(e.start_at)}`
+})
+
+const timeTitle = computed(() =>
+  isTimed(props.event) ? `${fmt(props.event.start_at)} – ${fmt(props.event.end_at)}` : undefined
+)
 
 async function markDone() {
   try { await store.markDone(props.event.id) }
@@ -41,7 +54,7 @@ async function del() {
   <div class="event-row" :class="`row-${urgency}`">
     <span class="col-course">{{ event.course || '—' }}</span>
     <span class="col-title">{{ event.title }}</span>
-    <span class="col-deadline">{{ fmt(event.end_at) }}</span>
+    <span class="col-deadline" :title="timeTitle">{{ timeLabel }}</span>
     <span class="col-policy">
       <span v-if="event.submission_policy && event.submission_policy !== 'none'"
         class="badge" :class="`policy-${event.submission_policy}`">
