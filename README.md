@@ -157,3 +157,34 @@ cd frontend && npm run type-check
 ## 部署（Windows Server + Tailscale）
 
 服务以保存了 DPAPI 凭据的同一 Windows 用户身份运行。DPAPI 加密绑定用户账户，换机或换账户需重新执行 `--save-credentials`。Tailscale 内网访问，`AGENT_TOKEN` 使用长随机串即可，无需复杂 OAuth。
+
+
+## Moodle 日历订阅（无需 SSO 凭据）
+
+在 Moodle 日历导出页面选择“所有事件”和“最近及未来 60 天”，获取日历 URL。
+此 URL 含私人访问令牌，请勿提交到源码或日志。无需提供 SSO 密码或浏览器 Cookie。
+
+```powershell
+uv sync --extra dev
+uv run python -m fetchers.moodle --save-url
+uv run python -m fetchers.moodle --check
+uv run concourse fetch moodle
+```
+
+`--save-url` 隐藏输入，复用 Windows DPAPI 凭据存储。非 Windows 的凭据存储会回退到
+权限为 600 的明文文件；也可通过本机 `.env` 或环境变量 `MOODLE_CALENDAR_URL` 配置，
+该变量优先于加密存储。`--check` 只显示数量和 UTC 时间范围，不写数据库或显示 URL。
+`uv run concourse creds forget moodle` 可移除已保存的订阅（不会清除环境变量）。
+
+新增 Fetcher 默认停用。保存订阅后，在“抓取器”页面启用 Moodle，默认每小时同步；
+或用 `uv run concourse fetch moodle` 手动同步。无需经过 Agent 或逐条执行 add。
+
+按 ICS UID 新增或更新事件，复用现有手动完成状态保护；不因事件移出滚动时间窗口、
+订阅为空或请求失败而删除已有日程。保留标题、说明、课程分类及原始时间精度，
+带时区时间转为 UTC，无时区时间及全天日期按 Asia/Shanghai 解释。
+全天事件的 DTEND 是排他的，转换为最后一天末尾；不把零点截止改为前一天 23:59。
+重定向（例如跳转到 SSO）视为错误，需检查订阅或校园网连接。
+
+ICS 不提供作业提交状态，不会自动标记“已提交”；取消事件跳过但不删除已导入条目。
+RRULE 会保留，但当前不展开重复实例；独立 RECURRENCE-ID 实例使用独立来源标识。
+日历缺少 URL 时不虚构作业链接。需要提交状态或更完整详情时，再补充浏览器脚本。
