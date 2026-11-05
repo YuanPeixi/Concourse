@@ -6,5 +6,7 @@ concourse.db
 __pycache__/
 *.pyc
 .venv/
+node_modules/
+.claude/settings.local.json
 dist/
 *.egg-info/
