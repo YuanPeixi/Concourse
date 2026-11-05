@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import getpass
 import json
+import re
 from datetime import UTC, date, datetime, time, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
@@ -136,7 +137,8 @@ def parse_calendar(
                 ScheduleEventCreate(
                     platform=NAME,
                     source_id=source_id,
-                    course=", ".join(courses),
+                    # Keep full category values in raw_payload; shorten only display names.
+                    course=", ".join(re.sub(r"(?<=.)-[0-9a-fA-F]{32}\Z", "", c) for c in courses),
                     title=str(component.get("SUMMARY", "Moodle event")),
                     description=str(component.get("DESCRIPTION", "")),
                     location=str(component.get("LOCATION", "")),
