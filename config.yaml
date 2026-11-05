@@ -18,6 +18,9 @@ fetchers:
     headless: true
   itestcloud:
     headless: true
+  # Save the private subscription first, then enable Moodle in the Fetchers UI.
+  moodle:
+    timezone_name: "Asia/Shanghai"
 
 # Agent 白名单：只有这里的 action 会被执行，其余一律拒绝
 agent:

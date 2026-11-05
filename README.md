@@ -40,6 +40,7 @@ fetchers/
   base.py          Fetcher Protocol（runtime_checkable）
   codeforces.py    纯 HTTP 参考实现（无需登录）
   scholat.py       Playwright 参考实现（parse 纯函数可离线测试）
+  moodle.py        私人 ICS 日历订阅（无需 SSO 凭据）
 
 backend/
   db.py            SQLModel async engine + init_db()
@@ -120,6 +121,7 @@ concourse add "明天下午三点组会 1小时"          # 自然语言，AI �
 | `DATABASE_URL` | `sqlite+aiosqlite:///./concourse.db`（默认）|
 | `AGENT_TOKEN` | Agent 端点鉴权密钥 |
 | `ANTHROPIC_API_KEY` | Claude API 密钥 |
+| `MOODLE_CALENDAR_URL` | 可选：私人 Moodle 日历 URL；优先于加密存储，Windows 推荐使用 `--save-url` |
 
 ---
 
@@ -157,3 +159,12 @@ cd frontend && npm run type-check
 ## 部署（Windows Server + Tailscale）
 
 服务以保存了 DPAPI 凭据的同一 Windows 用户身份运行。DPAPI 加密绑定用户账户，换机或换账户需重新执行 `--save-credentials`。Tailscale 内网访问，`AGENT_TOKEN` 使用长随机串即可，无需复杂 OAuth。
+
+
+## Moodle 日历订阅（无需 SSO 凭据）
+
+Moodle 通过私人 ICS 日历订阅接入，无需提供 SSO 密码或浏览器 Cookie。
+请先在 Moodle 日历导出页面选择“所有事件”和“最近及未来 60 天”，获取完整日历 URL。
+
+完整步骤见 [Moodle 接入指南](docs/moodle.md)，包括隐藏输入保存订阅、只读检查、首次入库、
+定时同步，以及 `unrecognized arguments`、HTTP 303 等常见问题。

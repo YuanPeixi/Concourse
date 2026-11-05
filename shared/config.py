@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -21,6 +22,7 @@ class Secrets(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./concourse.db"
     agent_token: str = ""
     anthropic_api_key: str = ""
+    moodle_calendar_url: SecretStr = SecretStr("")
 
 
 def load_config() -> dict[str, Any]:
