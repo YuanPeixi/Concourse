@@ -34,8 +34,9 @@ class _FakeFetcher:
 
 
 @pytest.fixture()
-def client():
-    with TestClient(app) as c:
+def client(monkeypatch):
+    monkeypatch.setattr(scheduler, "_load_fetcher", lambda name: _FakeFetcher())
+    with TestClient(app, headers={"Authorization": "Bearer " + os.environ["CONCOURSE_DESKTOP_TOKEN"]}) as c:
         yield c
 
 
@@ -58,6 +59,9 @@ def test_list_contains_configured(client):
 
 
 def test_disable_enable_and_cron_override(client):
+    result = client.put("/fetchers/scholat/config", json={"config": {"course_ids": ["123"]},
+                        "credentials": {"username": "test-user", "password": "test-password"}})
+    assert result.status_code == 200
     r = client.patch("/fetchers/scholat", json={"enabled": False})
     assert r.status_code == 200 and r.json()["enabled"] is False
     assert r.json()["next_run_at"] is None
@@ -88,7 +92,8 @@ def test_run_now_records_success_and_error(client, monkeypatch):
     monkeypatch.setattr(scheduler, "_load_fetcher", lambda name: _FakeFetcher(fail=True))
     assert client.post("/fetchers/codeforces/run").status_code == 202
     info = _wait_status(client, "codeforces", "error")
-    assert "boom" in info["last_error"]
+    assert "boom" not in info["last_error"]
+    assert info["error_kind"] == "unknown"
     assert info["last_success_at"]  # 上次成功时间保留
 
 

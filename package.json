@@ -2,9 +2,54 @@
   "scripts": {
     "backend": "uv run uvicorn backend.main:app --reload",
     "frontend": "npm run dev --prefix frontend",
-    "dev": "concurrently -n BACK,FRONT -c blue,green \"npm:backend\" \"npm:frontend\""
+    "dev": "concurrently -n BACK,FRONT -c blue,green \"npm:backend\" \"npm:frontend\"",
+    "desktop": "electron .",
+    "test:desktop": "node --test desktop/*.test.cjs",
+    "dist:win": "electron-builder --win nsis --x64",
+    "build:desktop": "python scripts/build_desktop.py"
   },
   "devDependencies": {
-    "concurrently": "^10.0.6"
+    "concurrently": "^10.0.6",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0"
+  },
+  "name": "concourse-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "description": "Concourse Windows desktop assistant",
+  "build": {
+    "appId": "io.concourse.desktop",
+    "productName": "Concourse",
+    "asar": true,
+    "directories": {
+      "output": "artifacts"
+    },
+    "files": [
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "desktop/policy.cjs",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/concourse-backend",
+        "to": "backend"
+      },
+      {
+        "from": "build/browsers",
+        "to": "browsers"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

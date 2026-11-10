@@ -10,3 +10,8 @@ node_modules/
 .claude/settings.local.json
 dist/
 *.egg-info/
+
+.desktop-data/
+artifacts/
+build/
+.pytest_cache/

@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { registerPlatforms } from '../platforms'
 import type { FetcherInfo } from '../types'
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+import { apiFetch } from '../api'
 
 async function errorText(res: Response): Promise<string> {
   try {
@@ -26,9 +27,10 @@ export const useFetchersStore = defineStore('fetchers', () => {
   async function load() {
     loading.value = true
     try {
-      const res = await fetch(`${BASE}/fetchers`)
+      const res = await apiFetch(`/fetchers`)
       if (!res.ok) throw new Error(await errorText(res))
       fetchers.value = await res.json()
+      registerPlatforms(fetchers.value)
       error.value = null
     } catch (e: any) {
       error.value = e.message ?? '加载失败'
@@ -38,7 +40,7 @@ export const useFetchersStore = defineStore('fetchers', () => {
   }
 
   async function update(name: string, patch: { enabled?: boolean; cron?: string | null }) {
-    const res = await fetch(`${BASE}/fetchers/${name}`, {
+    const res = await apiFetch(`/fetchers/${name}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
@@ -48,7 +50,7 @@ export const useFetchersStore = defineStore('fetchers', () => {
   }
 
   async function runNow(name: string) {
-    const res = await fetch(`${BASE}/fetchers/${name}/run`, { method: 'POST' })
+    const res = await apiFetch(`/fetchers/${name}/run`, { method: 'POST' })
     if (!res.ok && res.status !== 409) throw new Error(await errorText(res))
     const f = fetchers.value.find(x => x.name === name)
     if (f) f.running = true

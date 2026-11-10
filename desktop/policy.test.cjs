@@ -1,0 +1,16 @@
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const { validateRequest, externalUrl } = require('./policy.cjs')
+test('IPC limits methods, paths and payloads', () => {
+  validateRequest('/events?limit=200', 'GET')
+  validateRequest('/fetchers/scholat', 'PATCH', '{"enabled":false}')
+  for (const path of ['https://evil.example', '//evil.example', '/agent', '/events/../agent', '/events\\evil'])
+    assert.throws(() => validateRequest(path, 'GET'))
+  assert.throws(() => validateRequest('/events', 'PUT'))
+  assert.throws(() => validateRequest('/fetchers/scholat', 'PATCH', 'x'))
+})
+test('external links only allow HTTP(S) without credentials', () => {
+  assert.equal(externalUrl('https://example.com'), true)
+  for (const url of ['file:///C:/Windows', 'javascript:alert(1)', 'https://user:pass@example.com'])
+    assert.equal(externalUrl(url), false)
+})

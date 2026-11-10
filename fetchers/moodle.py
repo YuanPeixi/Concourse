@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from icalendar import Calendar
 
 from shared import credentials
+from shared.errors import LoginRequired, NetworkFailure
 from shared.config import secrets
 from shared.models import ScheduleEventCreate
 
@@ -61,11 +62,13 @@ def _download_calendar(url: str, timeout: float) -> bytes:
         with build_opener(_NoRedirect()).open(request, timeout=timeout) as response:
             content = response.read(_MAX_BYTES + 1)
     except HTTPError as exc:
-        raise RuntimeError(
+        if exc.code in (301, 302, 303, 307, 308, 401, 403):
+            raise LoginRequired("Moodle subscription expired") from None
+        raise NetworkFailure(
             f"Moodle calendar HTTP {exc.code}; check the saved subscription or campus network."
         ) from None
     except (URLError, TimeoutError, OSError):
-        raise RuntimeError(
+        raise NetworkFailure(
             "Cannot reach Moodle calendar; check the network or saved URL."
         ) from None
     if len(content) > _MAX_BYTES:

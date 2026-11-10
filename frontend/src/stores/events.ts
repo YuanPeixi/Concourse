@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import type { ScheduleEvent, StagedEvent } from '../types'
 import { urgencyOf as computeUrgency, type Urgency } from '../eventTime'
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+import { apiFetch } from '../api'
 
 export const useEventsStore = defineStore('events', () => {
   const events = ref<ScheduleEvent[]>([])
@@ -53,8 +53,8 @@ export const useEventsStore = defineStore('events', () => {
     error.value = null
     try {
       const [evRes, stRes] = await Promise.all([
-        fetch(`${BASE}/events?limit=200`),
-        fetch(`${BASE}/staged`),
+        apiFetch(`/events?limit=200`),
+        apiFetch(`/staged`),
       ])
       if (!evRes.ok) throw new Error(`/events ${evRes.status}`)
       if (!stRes.ok) throw new Error(`/staged ${stRes.status}`)
@@ -70,7 +70,7 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   async function acceptStaged(id: number) {
-    const res = await fetch(`${BASE}/staged/${id}/accept`, { method: 'POST' })
+    const res = await apiFetch(`/staged/${id}/accept`, { method: 'POST' })
     if (!res.ok) throw new Error(`Accept failed: ${res.status}`)
     const newEvent: ScheduleEvent = await res.json()
     events.value.push(newEvent)
@@ -78,13 +78,13 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   async function deleteEvent(id: number) {
-    const res = await fetch(`${BASE}/events/${id}`, { method: 'DELETE' })
+    const res = await apiFetch(`/events/${id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Delete failed: ${res.status}`)
     events.value = events.value.filter(e => e.id !== id)
   }
 
   async function markDone(id: number) {
-    const res = await fetch(`${BASE}/events/${id}/done`, { method: 'POST' })
+    const res = await apiFetch(`/events/${id}/done`, { method: 'POST' })
     if (!res.ok) throw new Error(`Mark done failed: ${res.status}`)
     const updated: ScheduleEvent = await res.json()
     const idx = events.value.findIndex(e => e.id === id)
@@ -92,7 +92,7 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   async function restoreEvent(id: number) {
-    const res = await fetch(`${BASE}/events/${id}/restore`, { method: 'POST' })
+    const res = await apiFetch(`/events/${id}/restore`, { method: 'POST' })
     if (!res.ok) throw new Error(`Restore failed: ${res.status}`)
     const restored: ScheduleEvent = await res.json()
     trash.value = trash.value.filter(e => e.id !== id)
@@ -100,19 +100,19 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   async function permanentDelete(id: number) {
-    const res = await fetch(`${BASE}/events/${id}/permanent`, { method: 'DELETE' })
+    const res = await apiFetch(`/events/${id}/permanent`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Permanent delete failed: ${res.status}`)
     trash.value = trash.value.filter(e => e.id !== id)
   }
 
   async function fetchTrash() {
-    const res = await fetch(`${BASE}/trash`)
+    const res = await apiFetch(`/trash`)
     if (!res.ok) throw new Error(`Fetch trash failed: ${res.status}`)
     trash.value = await res.json()
   }
 
   async function dismissStaged(id: number) {
-    const res = await fetch(`${BASE}/staged/${id}`, { method: 'DELETE' })
+    const res = await apiFetch(`/staged/${id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Dismiss failed: ${res.status}`)
     staged.value = staged.value.filter(s => s.id !== id)
   }

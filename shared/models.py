@@ -155,3 +155,23 @@ def to_aware_utc(dt: datetime | None) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+class ReminderSettings(SQLModel, table=True):
+    __tablename__ = "reminder_settings"
+    id: int = SQLField(default=1, primary_key=True)
+    enabled: bool = True
+    leads: list[int] = SQLField(default_factory=lambda: [1440, 60], sa_column=Column(JSON))
+    baseline_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ReminderDelivery(SQLModel, table=True):
+    __tablename__ = "reminder_deliveries"
+    __table_args__ = (UniqueConstraint("event_id", "target_at", "lead_minutes", name="uq_reminder_target"),)
+    id: int | None = SQLField(default=None, primary_key=True)
+    event_id: int = SQLField(index=True)
+    target_at: datetime
+    lead_minutes: int
+    due_at: datetime
+    status: str = "pending"
+    sent_at: datetime | None = None

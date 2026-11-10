@@ -8,12 +8,9 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import logging
-import pkgutil
 import sys
 import time
-import traceback
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,35 +20,28 @@ from apscheduler.triggers.cron import CronTrigger
 from backend.repository import get_fetcher_state, list_fetcher_states, upsert_event
 from shared import config as cfg
 from shared.models import FetcherState
+from shared.errors import MESSAGES, classify, stored_kind
 
 log = logging.getLogger("concourse.scheduler")
 
 _scheduler: AsyncIOScheduler | None = None
 _locks: dict[str, asyncio.Lock] = {}
 _background: set[asyncio.Task] = set()
-
-
-def _class_name(name: str) -> str:
-    return "".join(p.capitalize() for p in name.split("_")) + "Fetcher"
+_active: set[asyncio.Task] = set()
+_pending: set[str] = set()
+_stopping = False
+FETCH_TIMEOUT = 180
+RETRY_DELAY = 2
 
 
 def _load_fetcher(name: str) -> Any:
-    """根据 fetcher 名加载模块并实例化。"""
-    kwargs = cfg.fetcher_kwargs(name)
-    module = importlib.import_module(f"fetchers.{name}")
-    cls = getattr(module, _class_name(name))
-    return cls(**kwargs)
+    from shared.platforms import REGISTRY
+    return REGISTRY[name].create()
 
 
 def available_fetchers() -> list[str]:
-    """config.yaml 中配置的 + fetchers/ 目录下存在的模块。"""
-    import fetchers
-
-    names = set(cfg.configured_fetchers())
-    for mod in pkgutil.iter_modules(fetchers.__path__):
-        if not mod.name.startswith("_") and mod.name != "base":
-            names.add(mod.name)
-    return sorted(names)
+    from shared.platforms import REGISTRY
+    return sorted(REGISTRY)
 
 
 def default_enabled(name: str) -> bool:
@@ -112,7 +102,25 @@ async def _record(name: str, **fields: Any) -> None:
 
 
 async def run_fetcher(name: str, trigger: str = "schedule") -> bool:
+    if _stopping:
+        return False
+    task = asyncio.current_task()
+    _active.add(task)
+    try:
+        return await _run_fetcher(name, trigger)
+    finally:
+        _active.discard(task)
+        _pending.discard(name)
+
+
+async def _run_fetcher(name: str, trigger: str = "schedule") -> bool:
     """运行一次 fetcher 并记录结果；已在运行则跳过并返回 False。"""
+    if trigger != "manual":
+        from backend.db import SessionLocal
+        async with SessionLocal() as session:
+            previous = await get_fetcher_state(session, name)
+        if previous and stored_kind(previous.last_error) in {"login", "verification"}:
+            return False
     lock = _locks.setdefault(name, asyncio.Lock())
     if lock.locked():
         log.info("fetcher %s 已在运行，跳过本次触发", name)
@@ -128,19 +136,28 @@ async def run_fetcher(name: str, trigger: str = "schedule") -> bool:
         count = changed = 0
         try:
             fetcher = _load_fetcher(name)
-            events = await _fetch(fetcher)
+            async with asyncio.timeout(FETCH_TIMEOUT):
+                for attempt in range(2):
+                    try:
+                        events = await _fetch(fetcher)
+                        break
+                    except Exception as error:
+                        if classify(error) != "network" or attempt == 1:
+                            raise
+                        await asyncio.sleep(RETRY_DELAY)
             count = len(events)
             async with SessionLocal() as session:
                 for ev in events:
                     _, is_changed = await upsert_event(session, ev)
                     changed += int(is_changed)
         except Exception as exc:  # noqa: BLE001
-            log.exception("fetcher %s 抓取失败: %s", name, exc)
+            kind = classify(exc)
+            log.warning("fetcher %s failed (%s)", name, kind)
             await _record(
                 name,
                 last_finished_at=datetime.now(timezone.utc),
                 last_status="error",
-                last_error=traceback.format_exc()[-2000:],
+                last_error=MESSAGES[kind],
                 last_count=count,
                 last_changed=changed,
                 last_duration_ms=int((time.monotonic() - t0) * 1000),
@@ -164,8 +181,9 @@ async def run_fetcher(name: str, trigger: str = "schedule") -> bool:
 
 def trigger_now(name: str) -> bool:
     """后台立即运行；已在运行返回 False。"""
-    if is_running(name):
+    if _stopping or name in _pending or is_running(name):
         return False
+    _pending.add(name)
     task = asyncio.create_task(run_fetcher(name, trigger="manual"))
     _background.add(task)
     task.add_done_callback(_background.discard)
@@ -204,7 +222,8 @@ async def apply_settings(name: str | None = None) -> None:
 
 
 async def start_scheduler() -> AsyncIOScheduler:
-    global _scheduler
+    global _scheduler, _stopping
+    _stopping = False
     if _scheduler is not None:
         return _scheduler
     _scheduler = AsyncIOScheduler()
@@ -214,7 +233,17 @@ async def start_scheduler() -> AsyncIOScheduler:
 
 
 async def stop_scheduler() -> None:
-    global _scheduler
+    global _scheduler, _stopping
+    _stopping = True
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
+    tasks = list(_background | _active)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    _background.clear()
+    _active.clear()
+    _pending.clear()
+    _locks.clear()

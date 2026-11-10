@@ -168,3 +168,14 @@ Moodle 通过私人 ICS 日历订阅接入，无需提供 SSO 密码或浏览器
 
 完整步骤见 [Moodle 接入指南](docs/moodle.md)，包括隐藏输入保存订阅、只读检查、首次入库、
 定时同步，以及 `unrecognized arguments`、HTTP 303 等常见问题。
+
+
+## Windows 桌面候选版
+
+桌面入口与验收状态见 `docs/desktop/PROGRESS.md`；使用说明见 `docs/desktop/USAGE.md`，测试报告见 `docs/desktop/TEST-REPORT.md`。
+
+构建：`uv sync --frozen --extra dev --extra desktop`、`npm ci`、`npm ci --prefix frontend`，然后 `.venv/Scripts/python.exe scripts/build_desktop.py`。输出在 `artifacts/`，包含 NSIS 安装包、SHA256SUMS.txt 与 verification.json。当前候选包不代表已经通过干净 Windows 安装与真实账号验收。
+
+桌面开发运行：先构建前端，再 `npm run desktop`，默认使用隔离 `.desktop-data`。可用绝对路径环境变量 `CONCOURSE_DATA_DIR` 覆盖。配置、凭据、浏览器状态与数据库均在该数据目录；不再隐式加载源码根目录的 config.yaml 或 .env，旧数据应从首次引导导入。
+
+单独 Web 调试需要显式配置后端 `AGENT_TOKEN` 与开发前端 `VITE_API_TOKEN`（相同的一次性测试值），并设置隔离数据目录。正式桌面只由主进程持有启动令牌，不将令牌交给页面或持久化。不要带 VITE_* 覆盖变量打发布包。

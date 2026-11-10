@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { apiFetch } from '../api'
 import { useEventsStore } from '../stores/events'
 import type { ScheduleEvent } from '../types'
 import { PLATFORM_COLORS, displayName, platformColor } from '../platforms'
@@ -125,6 +127,21 @@ function laneHeight(events: ScheduleEvent[]): number {
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
 const selected = ref<ScheduleEvent | null>(null)
+const route = useRoute()
+const notificationMessage = ref('')
+watch(() => route.query.event, async identity => {
+  if (typeof identity !== 'string' || !/^[1-9]\d*$/.test(identity)) return
+  notificationMessage.value = ''
+  try {
+    const response = await apiFetch(`/events/${identity}`)
+    if (!response.ok) throw new Error(response.status === 404 ? '该提醒对应的事项已删除或不存在。' : '事项暂时无法加载。')
+    selected.value = await response.json()
+  } catch (error) {
+    selected.value = null
+    notificationMessage.value = error instanceof Error ? error.message : '事项加载失败'
+  }
+}, { immediate: true })
+
 function select(e: ScheduleEvent) { selected.value = selected.value?.id === e.id ? null : e }
 function fmtFull(iso: string | null): string {
   if (!iso) return '—'
@@ -135,6 +152,7 @@ function fmtFull(iso: string | null): string {
 
 <template>
   <div class="timeline-view">
+    <p v-if="notificationMessage" role="status">{{ notificationMessage }}</p>
     <div class="tl-header">
       <h2 class="tl-title">时间轴</h2>
       <span class="tl-range">过去 {{ PAST_H }} 小时 · 未来 {{ FUTURE_D }} 天</span>

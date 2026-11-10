@@ -55,6 +55,12 @@ export interface FetcherInfo {
   cron_overridden: boolean
   running: boolean
   next_run_at: string | null
+  description: { name: string; title: string; color: string; login: boolean; cron: string;
+    fields: { name: string; label: string; type: string; secret?: boolean; help?: string }[] }
+  configured: boolean
+  state: string
+  error_kind: string | null
+  credentials_saved: boolean
   config: Record<string, any>
   last_trigger: 'schedule' | 'manual' | 'cli' | null
   last_started_at: string | null

@@ -34,6 +34,7 @@ from bs4 import BeautifulSoup
 
 from fetchers._browser import launch_context
 from shared import credentials
+from shared.errors import LoginRequired, VerificationRequired
 from shared.models import ScheduleEventCreate
 
 if TYPE_CHECKING:
@@ -295,7 +296,7 @@ async def _open_login_or_exam(context: BrowserContext, page: Page) -> Page:
             know_clicked = True
         await page.wait_for_timeout(500)
     raise RuntimeError(
-        "iTEST 未跳转到 SSO 或 exam，当前页面：" + ", ".join(p.url for p in context.pages)
+        "iTEST 未跳转到登录页面"
     )
 
 
@@ -322,8 +323,8 @@ async def _perform_login(context: BrowserContext, page: Page, username: str, pas
     except Exception as exc:
         body = (await page.locator("body").inner_text()).lower()
         if any(marker in body for marker in _CAPTCHA_MARKERS):
-            raise RuntimeError("iTEST 登录需要交互式验证码，未完成登录") from exc
-        raise RuntimeError(f"iTEST 登录未进入 exam 页面，当前 URL：{page.url}") from exc
+            raise VerificationRequired("人工验证未完成") from None
+        raise LoginRequired("登录失败") from None
     return page
 
 
@@ -363,7 +364,7 @@ class ItestcloudFetcher:
                 try:
                     first_html = await _load_training_page(page, first_route)
                 except Exception as exc:  # noqa: BLE001 — 会话检查失败一律视为需要登录
-                    _LOG.info("iTEST 会话检查失败，改为登录：%s", exc)
+                    _LOG.info("iTEST 会话检查失败，改为登录")
                     first_html = None
                 if first_html is None:
                     page = await login_with_saved_credentials(context)
@@ -374,7 +375,7 @@ class ItestcloudFetcher:
                     # 会话检查时已加载过第一页，直接复用
                     html = (first_html if index == 0 else None) or await _load_training_page(page, route)
                     if html is None:
-                        raise RuntimeError(f"iTEST 训练页 {route} 被重定向，会话可能已失效")
+                        raise LoginRequired("会话已失效")
                     for event in parse_training_list(html, category):
                         by_id[event.source_id] = event
 
@@ -402,7 +403,7 @@ class ItestcloudFetcher:
                     raise RuntimeError(f"iTEST 考试列表请求失败：HTTP {resp.status}")
                 body = await resp.json()
                 if body.get("code") != 0:
-                    raise RuntimeError(f"iTEST 考试列表返回错误：{body.get('msg')}")
+                    raise RuntimeError("iTEST 考试列表返回错误")
                 rs = body.get("rs") or {}
                 data = rs.get("data") or []
                 items += data

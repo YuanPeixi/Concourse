@@ -2,7 +2,9 @@
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useFetchersStore } from '../stores/fetchers'
 import { useEventsStore } from '../stores/events'
-import { displayName, platformColor } from '../platforms'
+import { apiFetch } from '../api'
+import ReminderSettings from '../components/ReminderSettings.vue'
+import PlatformConfig from '../components/PlatformConfig.vue'
 import type { FetcherInfo } from '../types'
 
 const store = useFetchersStore()
@@ -78,6 +80,14 @@ async function toggle(f: FetcherInfo) {
   catch (e: any) { flash(f.name, e.message, true) }
 }
 
+async function login(f: FetcherInfo, action: string) {
+  try {
+    const response = await apiFetch(`/fetchers/${f.name}/login/${action}`, { method: 'POST' })
+    if (!response.ok) throw new Error((await response.json()).detail)
+    schedulePoll(0)
+  } catch (e: any) { flash(f.name, e.message, true) }
+}
+
 async function run(f: FetcherInfo) {
   try { await store.runNow(f.name); schedulePoll(0) }
   catch (e: any) { flash(f.name, e.message, true) }
@@ -139,6 +149,8 @@ function duration(ms: number): string {
 const TRIGGER_LABEL: Record<string, string> = { schedule: '定时', manual: '手动', cli: 'CLI' }
 
 function statusOf(f: FetcherInfo): { cls: string; text: string } {
+  if (f.state === 'waiting_verification') return { cls: 'running', text: '等待人工验证' }
+  if (!f.configured) return { cls: 'never', text: '未配置' }
   if (f.running) return { cls: 'running', text: '运行中' }
   if (f.last_status === 'error') return { cls: 'error', text: '上次失败' }
   if (f.last_status === 'ok') return { cls: 'ok', text: '正常' }
@@ -154,13 +166,15 @@ function statusOf(f: FetcherInfo): { cls: string; text: string } {
       <button class="btn refresh-btn" :disabled="store.loading" @click="schedulePoll(0)">刷新</button>
     </div>
 
+    <ReminderSettings />
+
     <div v-if="store.error" class="status-bar error">{{ store.error }}</div>
     <div v-else-if="!store.fetchers.length && store.loading" class="status-bar">正在加载…</div>
 
     <div v-for="f in store.fetchers" :key="f.name" class="fcard" :class="{ disabled: !f.enabled }">
       <!-- header -->
       <div class="fcard-head">
-        <span class="fname" :style="{ color: platformColor(f.name) }">{{ displayName(f.name) }}</span>
+        <span class="fname" :style="{ color: f.description.color }">{{ f.description.title }}</span>
         <span class="fid">{{ f.name }}</span>
         <span class="badge" :class="statusOf(f).cls">
           <span v-if="f.running" class="spinner"></span>{{ statusOf(f).text }}
@@ -241,22 +255,25 @@ function statusOf(f: FetcherInfo): { cls: string; text: string } {
 
       <pre v-if="f.last_status === 'error' && f.last_error" class="error-box">{{ f.last_error }}</pre>
 
-      <details v-if="Object.keys(f.config).length" class="config">
-        <summary>参数（config.yaml → fetchers.{{ f.name }}）</summary>
-        <pre>{{ JSON.stringify(f.config, null, 2) }}</pre>
-      </details>
+      <div v-if="f.description.login" class="login-actions">
+        <template v-if="f.state === 'waiting_verification'">
+          <span>请在打开的浏览器中登录并完成验证（3 分钟内）。</span>
+          <button class="btn" @click="login(f, 'complete')">已完成登录</button>
+          <button class="btn" @click="login(f, 'cancel')">取消</button>
+        </template>
+        <button v-else class="btn" :disabled="f.running" @click="login(f, 'start')">打开辅助登录</button>
+      </div>
+      <PlatformConfig :platform="f" @saved="poll" />
     </div>
 
     <div v-if="!store.fetchers.length && !store.loading && !store.error" class="empty">没有可用的抓取器</div>
 
-    <div class="hint">
-      新的抓取器：在 <code>fetchers/</code> 下添加 <code>&lt;name&gt;.py</code> 后会自动出现在这里（默认停用）。
-      参数在 <code>config.yaml</code> 的 <code>fetchers.&lt;name&gt;</code> 中修改，需重启后端。
-    </div>
+    <div class="hint">保存配置后可单独启用定时抓取。关闭窗口后后台继续运行；完全退出可停止后台任务。</div>
   </div>
 </template>
 
 <style scoped>
+.login-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 16px; font-size: 12px; }
 .fetchers-view { max-width: 900px; margin: 0 auto; padding: 24px 20px 60px; }
 
 .fv-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
@@ -276,7 +293,7 @@ function statusOf(f: FetcherInfo): { cls: string; text: string } {
   overflow: hidden;
   transition: opacity .15s;
 }
-.fcard.disabled { opacity: .7; }
+.fcard.disabled { border-style: dashed; }
 
 .fcard-head {
   display: flex; align-items: center; gap: 10px;
