@@ -17,7 +17,9 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Any
 
-APP_DIR_NAME = "concourse"
+from shared.paths import data_root, platform_directory
+
+APP_DIR_NAME = "Concourse"
 CRED_DIR_NAME = "credentials"
 
 # CRYPTPROTECT_UI_FORBIDDEN
@@ -75,32 +77,32 @@ def _dpapi_unprotect(data: bytes) -> bytes:
 
 
 def cred_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
-    if base:
-        return Path(base) / APP_DIR_NAME / CRED_DIR_NAME
-    return Path.home() / f".{APP_DIR_NAME}" / CRED_DIR_NAME
+    return data_root() / CRED_DIR_NAME
 
 
 def path_for(platform: str) -> Path:
-    return cred_dir() / f"{platform}.dpapi"
+    return platform_directory("credentials", platform).with_suffix(".dpapi")
 
 
 def save(platform: str, payload: dict[str, Any]) -> Path:
     path = path_for(platform)
     path.parent.mkdir(parents=True, exist_ok=True)
     blob_text = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    if _is_windows():
-        path.write_bytes(_dpapi_protect(blob_text))
-    else:
-        path.write_bytes(blob_text)
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
-        print(
-            "[凭据] 警告：当前不是 Windows，DPAPI 不可用，改用文件权限保护明文。",
-            file=sys.stderr,
-        )
+    import tempfile
+
+    encrypted = _dpapi_protect(blob_text) if _is_windows() else blob_text
+    fd, temporary = tempfile.mkstemp(prefix="credential-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(encrypted)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if not _is_windows():
+            os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
     return path
 
 
@@ -112,7 +114,7 @@ def load(platform: str) -> dict[str, Any] | None:
         raw = path.read_bytes()
         data = _dpapi_unprotect(raw) if _is_windows() else raw
         return json.loads(data.decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         print(f"[凭据] 读取 {platform} 失败，将忽略已保存的凭据：{exc}", file=sys.stderr)
         return None
 

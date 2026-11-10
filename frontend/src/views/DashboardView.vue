@@ -52,14 +52,14 @@ const platformGroups = computed(() => {
 const addText = ref('')
 const adding = ref(false)
 const addError = ref('')
-const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+import { apiFetch } from '../api'
 
 async function addEvent() {
   if (!addText.value.trim()) return
   adding.value = true; addError.value = ''
   try {
     const token = (import.meta.env.VITE_AGENT_TOKEN as string) || ''
-    const resp = await fetch(`${BASE}/agent`, {
+    const resp = await apiFetch(`/agent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ message: addText.value }),

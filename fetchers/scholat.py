@@ -25,6 +25,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 from fetchers._browser import launch_context
 from shared import credentials
+from shared.errors import LoginRequired
 
 if TYPE_CHECKING:
     from playwright.async_api import BrowserContext
@@ -275,7 +276,7 @@ async def _ensure_logged_in(context: BrowserContext, cred: dict | None, probe_co
         ok = await _perform_login(context, cred["username"], cred["password"])
         if ok:
             return
-    raise RuntimeError(
+    raise LoginRequired(
         "Scholat 登录失败：请先运行 `uv run python -m fetchers.scholat --save-credentials` 保存凭据，"
         "或检查用户名/密码是否正确。"
     )
@@ -293,12 +294,14 @@ class ScholatFetcher:
         include_submitted: bool = True,
         headless: bool = True,
     ):
-        self.course_ids = course_ids or ["3017", "3042"]
+        self.course_ids = course_ids or []
         self.include_submitted = include_submitted
         self.headless = headless
 
     async def fetch(self, since: datetime | None = None) -> list[ScheduleEventCreate]:
         from playwright.async_api import async_playwright
+        if not self.course_ids:
+            raise ValueError("请先配置学者网课程 ID")
         cred = credentials.load(NAME)
         async with async_playwright() as pw:
             context = await launch_context(pw, NAME, headless=self.headless)
